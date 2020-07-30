@@ -10,7 +10,8 @@ except Exception:
     TILE_HEIGHT = 60
     WIDTH = 5
     HEIGHT = 5
-CORNERS = [[0, 0], [WIDTH-1, 0], [0, HEIGHT-1], [WIDTH-1, HEIGHT-1]]
+CORNERS = [[0, 0], [0, WIDTH-1], [HEIGHT-1, 0], [HEIGHT-1, WIDTH-1]]
+print(CORNERS)
 
 def pix_to_coord(x,y):
     a = x//TILE_WIDTH
@@ -71,6 +72,9 @@ print("The 4 corners of the board are fixed,")
 print("\tyour job is to rearrange all other tiles to complete a degradee")
 print("\tleft-clicking a tile makes it a source tile")
 print("\tright-clicking a tile swaps it with the last source you clicked")
+print("\tyou can also drag&drop a tile to move it")
+
+pygame.image.save(screen, "start.png")
 
 left_clicked = [0, 0]
 while correct_tiles != WIDTH*HEIGHT:
@@ -78,10 +82,10 @@ while correct_tiles != WIDTH*HEIGHT:
         if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif ev.type == MOUSEBUTTONDOWN:
-            if ev.button == 1:
+        elif ev.type == MOUSEBUTTONDOWN or ev.type == MOUSEBUTTONUP:
+            if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
                 left_clicked = pix_to_coord(*ev.pos)[::-1]
-            elif ev.button == 3:
+            elif ev.type == MOUSEBUTTONDOWN and ev.button == 3 or ev.type == MOUSEBUTTONUP and ev.button == 1:
                 right_clicked = pix_to_coord(*ev.pos)[::-1]
                 if left_clicked in CORNERS or right_clicked in CORNERS:
                     continue
@@ -105,5 +109,11 @@ while correct_tiles != WIDTH*HEIGHT:
 
                 left_clicked = right_clicked
 
-print("YOU WON")
-input()
+pygame.display.set_caption("You WON!")
+pygame.image.save(screen, "end.png")
+
+while True:
+    for ev in pygame.event.get():
+        if ev.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
