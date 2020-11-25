@@ -10,15 +10,16 @@ except Exception:
     TILE_HEIGHT = 60
     WIDTH = 5
     HEIGHT = 5
-CORNERS = [[0, 0], [0, WIDTH-1], [HEIGHT-1, 0], [HEIGHT-1, WIDTH-1]]
-print(CORNERS)
 
-def pix_to_coord(x,y):
+CORNERS = [[0, 0], [0, WIDTH-1], [HEIGHT-1, 0], [HEIGHT-1, WIDTH-1]]
+BLACK = (0, 0, 0)
+
+def pix_to_coord(x, y):
     a = x//TILE_WIDTH
     b = y//TILE_HEIGHT
     return [a, b]
 
-def create_grid(w,h):
+def create_grid(w, h):
     global table
     table = [[[-1,-1,-1] for j in range(w)] for i in range(h)]
   
@@ -37,21 +38,57 @@ def create_grid(w,h):
         for j in range(w):
             table[i][j] = [round(table[i][0][k] + j*x[k]) for k in range(3)]
   
-def swap_tiles(n,m):
-    s = table[n[0]][n[1]]
-    table[n[0]][n[1]] = table[m[0]][m[1]]
-    table[m[0]][m[1]] = s
+def swap_tiles(n, m):
+    table[n[0]][n[1]], table[m[0]][m[1]] = table[m[0]][m[1]], table[n[0]][n[1]]
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH*TILE_WIDTH, HEIGHT*TILE_HEIGHT))
 
-def draw_tile(i,j):
+def draw_tile(i, j):
     r = pygame.Rect(j*TILE_WIDTH, i*TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT)
     c = table[i][j]
     pygame.draw.rect(screen, c, r)
     pygame.display.update([r])
 
-create_grid(WIDTH,HEIGHT)
+def black_out(i, j):
+    c, table[i][j] = table[i][j], BLACK
+    draw_tile(i, j)
+    table[i][j] = c
+
+def draw_surroundings(i, j):
+    # Ensure neighbouring rectangles have correct colours.
+    r = pygame.Rect(0, 0, TILE_WIDTH, TILE_HEIGHT)
+    for di in [-1, 0, 1]:
+        for dj in [-1, 0, 1]:
+            if not (0 <= i+di < HEIGHT) or not (0 <= j+dj < WIDTH):
+                continue
+            draw_tile(i+di, j+dj)
+
+def draw_floating_tile(px, py, origin):
+    # Ensure neighbouring rectangles have correct colours.
+    x, y = pix_to_coord(px, py)
+    draw_surroundings(y, x)
+    # Black out removed rectangle
+    if abs(x-origin[1]) + abs(y-origin[0]) < 3:
+        black_out(*origin)
+
+    to_update = []
+    # Draw frame around hovered rectangle.
+    r = pygame.Rect(0, 0, TILE_WIDTH, TILE_HEIGHT)
+    r.left = x*TILE_WIDTH
+    r.top = y*TILE_HEIGHT
+    u = pygame.draw.rect(screen, BLACK, r, 3) # draw frame around tile we are hovering.
+    to_update.append(u)
+    # Draw rectangle we are holding.
+    r.center = (int(px), int(py))
+    u = pygame.draw.rect(screen, table[origin[0]][origin[1]], r)
+    to_update.append(u)
+    u = pygame.draw.rect(screen, BLACK, r, 2)
+    to_update.append(u)
+    # Update display.
+    pygame.display.update(to_update)
+
+create_grid(WIDTH, HEIGHT)
 correct_table = [[color[::] for color in line] for line in table]
 for i in range(WIDTH*HEIGHT):
     l = [random.randint(0,HEIGHT-1), random.randint(0,WIDTH-1)]
@@ -77,17 +114,30 @@ print("\tyou can also drag&drop a tile to move it")
 pygame.image.save(screen, "start.png")
 
 left_clicked = [0, 0]
+
+clock = pygame.time.Clock()
+
 while correct_tiles != WIDTH*HEIGHT:
+    clock.tick(60)
+
     for ev in pygame.event.get():
         if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
+        # Check if the user is dragging a tile.
+        elif ev.type == MOUSEMOTION:
+            if ev.buttons[0] == 1:
+                draw_floating_tile(*ev.pos, left_clicked)
+        # Check if the user (un)clicked a tile.
         elif ev.type == MOUSEBUTTONDOWN or ev.type == MOUSEBUTTONUP:
             if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
                 left_clicked = pix_to_coord(*ev.pos)[::-1]
             elif ev.type == MOUSEBUTTONDOWN and ev.button == 3 or ev.type == MOUSEBUTTONUP and ev.button == 1:
                 right_clicked = pix_to_coord(*ev.pos)[::-1]
+
                 if left_clicked in CORNERS or right_clicked in CORNERS:
+                    draw_surroundings(*right_clicked)
+                    draw_tile(*left_clicked)
                     continue
 
                 # moves are about to be done
@@ -98,8 +148,8 @@ while correct_tiles != WIDTH*HEIGHT:
                     correct_tiles -= 1
 
                 swap_tiles(left_clicked, right_clicked)
-                draw_tile(left_clicked[0], left_clicked[1])
-                draw_tile(right_clicked[0], right_clicked[1])
+                draw_tile(*left_clicked)
+                draw_surroundings(*right_clicked)
 
                 # moves have been done; count how many were correct moves
                 if table[left_clicked[0]][left_clicked[1]] == correct_table[left_clicked[0]][left_clicked[1]]:
