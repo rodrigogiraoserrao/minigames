@@ -1,7 +1,9 @@
+import itertools
 import random
+import sys
+import numpy as np
 import pygame
 from pygame.locals import *
-import sys
 
 try:
     from HueHueConfig import *
@@ -11,159 +13,179 @@ except Exception:
     WIDTH = 5
     HEIGHT = 5
 
-CORNERS = [[0, 0], [0, WIDTH-1], [HEIGHT-1, 0], [HEIGHT-1, WIDTH-1]]
-BLACK = (0, 0, 0)
+CORNERS = [[0, 0], [WIDTH-1, 0], [0, HEIGHT-1], [WIDTH-1, HEIGHT-1]]
+BLACK = np.zeros(3, dtype=np.uint8)
 
-def pix_to_coord(x, y):
-    a = x//TILE_WIDTH
-    b = y//TILE_HEIGHT
-    return [a, b]
+def at(arr, pair):
+    """Utility method to use pairs to index a numpy array."""
+    return arr[pair[0], pair[1]]
+
+def pix_to_coord(px, py):
+    """Transform pixel coordinates into integer tile coordinates."""
+    return [px // TILE_WIDTH, py //TILE_HEIGHT]
+
+def rand_colour():
+    """Generates a random RGB colour, returns a numpy vector.
+    Prevents generation of colours that are too light or too dark.
+    """
+
+    while not 50 < np.sum(c := np.random.randint(0, 256, 3)) < 3*240:
+        pass
+    return c
 
 def create_grid(w, h):
-    global table
-    table = [[[-1,-1,-1] for j in range(w)] for i in range(h)]
-  
-    table[0][0] = [random.randint(0,255) for k in range(3)]
-    table[0][w-1] = [random.randint(0,255) for k in range(3)]
-    table[h-1][0] = [random.randint(0,255) for k in range(3)]
-    table[h-1][w-1] = [random.randint(0,255) for k in range(3)]
-    
-    y1 = [(table[h-1][0][k]-table[0][0][k])/(h-1) for k in range(3)]
-    y2 = [(table[h-1][w-1][k]-table[0][w-1][k])/(h-1) for k in range(3)]
-    
-    for i in range(h):
-        table[i][0] = [table[0][0][k] + i*y1[k] for k in range(3)]
-        table[i][w-1] = [table[0][w-1][k] + i*y2[k] for k in range(3)]
-        x = [(table[i][w-1][k]-table[i][0][k])/(w-1) for k in range(3)]
-        for j in range(w):
-            table[i][j] = [round(table[i][0][k] + j*x[k]) for k in range(3)]
-  
-def swap_tiles(n, m):
-    table[n[0]][n[1]], table[m[0]][m[1]] = table[m[0]][m[1]], table[n[0]][n[1]]
+    """Creates an initial grid with random colours, returns a 3D numpy tensor."""
 
-pygame.init()
-screen = pygame.display.set_mode((WIDTH*TILE_WIDTH, HEIGHT*TILE_HEIGHT))
+    # Define the left and right edges and interpolate them.
+    left  = np.linspace(rand_colour(), rand_colour(), num=h)
+    right = np.linspace(rand_colour(), rand_colour(), num=h)
+    return np.round(np.linspace(left, right, num=w))
+  
+def swap_tiles(colours, t1, t2):
+    """Swap two tiles in the given array (side-effect)."""
+    colours[t1[0], t1[1]], colours[t2[0], t2[1]] = (
+        np.copy(colours[t2[0], t2[1]]), np.copy(colours[t1[0], t1[1]])
+    )
 
-def draw_tile(i, j):
-    r = pygame.Rect(j*TILE_WIDTH, i*TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT)
-    c = table[i][j]
+def draw_tile(screen, colours, x, y):
+    """Draw the given tile to the surface given."""
+
+    if not (0 <= x < WIDTH) or not (0 <= y < HEIGHT):
+        return None
+
+    r = pygame.Rect(x*TILE_WIDTH, y*TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT)
+    c = colours[x, y]
     pygame.draw.rect(screen, c, r)
-    pygame.display.update([r])
+    return r
 
-def black_out(i, j):
-    c, table[i][j] = table[i][j], BLACK
-    draw_tile(i, j)
-    table[i][j] = c
+def black_out_tile(screen, colours, x, y):
+    """Draw the given tile with a black colour."""
 
-def draw_surroundings(i, j):
-    # Ensure neighbouring rectangles have correct colours.
+    c, colours[x, y] = np.copy(colours[x, y]), BLACK
+    r = draw_tile(screen, colours, x, y)
+    colours[x, y] = c
+    return r
+
+def draw_surroundings(screen, colours, x, y):
+    """Draw the tiles in a 3x3 area around the given tile."""
+
     r = pygame.Rect(0, 0, TILE_WIDTH, TILE_HEIGHT)
-    for di in [-1, 0, 1]:
-        for dj in [-1, 0, 1]:
-            if not (0 <= i+di < HEIGHT) or not (0 <= j+dj < WIDTH):
-                continue
-            draw_tile(i+di, j+dj)
+    return [
+        draw_tile(screen, colours, x+dx, y+dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+    ]
 
-def draw_floating_tile(px, py, origin):
-    # Ensure neighbouring rectangles have correct colours.
-    x, y = pix_to_coord(px, py)
-    draw_surroundings(y, x)
-    # Black out removed rectangle
-    if abs(x-origin[1]) + abs(y-origin[0]) < 3:
-        black_out(*origin)
+def draw_floating_tile_animation(screen, colours, px, py, original):
+    """Draw the floating tile animation."""
+
+    # Start with drawing the surroundings of the floating tile.
+    x, y = coord = pix_to_coord(px, py)
+    to_update = draw_surroundings(screen, colours, x, y)
+    # Check if we need to black out the original tile to show it is empty.
+    if np.sum(np.abs(np.array(original) - np.array(coord))) <= 3:
+        u = black_out_tile(screen, colours, *original)
+        to_update.append(u)
+
+    # Draw frame around tile being hovered.
+    r = pygame.Rect(x*TILE_WIDTH, y*TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT)
+    pygame.draw.rect(screen, BLACK, r.inflate(-2, -2), 3)
+    to_update.append(r)
+    # Draw floating tile and frame.
+    r.center = (int(px), int(py))
+    pygame.draw.rect(screen, at(colours, original), r)
+    pygame.draw.rect(screen, BLACK, r, 2)
+    to_update.append(r.inflate(2, 2))
+
+    return to_update
+
+
+if __name__ == "__main__":
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH*TILE_WIDTH, HEIGHT*TILE_HEIGHT))
+
+    colours = create_grid(WIDTH, HEIGHT)
+    correct_colours = np.copy(colours)
+
+    last_axis_all = lambda arr: np.apply_along_axis(np.all, -1, arr)
+
+    # Shuffle colours
+    colours = np.reshape(colours, (WIDTH*HEIGHT, 3))
+    np.random.shuffle(colours)
+    colours = np.reshape(colours, (WIDTH, HEIGHT, 3))
+    # Fix corners back into original position.
+    for x, y in itertools.product([0, WIDTH-1], [0, HEIGHT-1]):
+        colour = correct_colours[x, y]
+        is_at = np.where(last_axis_all(colour == colours))
+        print(is_at)
+        colours[is_at], colours[x, y] = colours[x, y], colours[is_at]
+    # Count colours in the correct positions
+    correct_tiles = np.sum(last_axis_all(colours == correct_colours))
+    print(correct_tiles)
+    assert correct_tiles >= 4, "At least the 4 corners should be correct."
 
     to_update = []
-    # Draw frame around hovered rectangle.
-    r = pygame.Rect(0, 0, TILE_WIDTH, TILE_HEIGHT)
-    r.left = x*TILE_WIDTH
-    r.top = y*TILE_HEIGHT
-    u = pygame.draw.rect(screen, BLACK, r, 3) # draw frame around tile we are hovering.
-    to_update.append(u)
-    # Draw rectangle we are holding.
-    r.center = (int(px), int(py))
-    u = pygame.draw.rect(screen, table[origin[0]][origin[1]], r)
-    to_update.append(u)
-    u = pygame.draw.rect(screen, BLACK, r, 2)
-    to_update.append(u)
-    # Update display.
-    pygame.display.update(to_update)
+    for x in range(WIDTH):
+        for y in range(HEIGHT):
+            to_update.append(
+                draw_tile(screen, colours, x, y)
+            )
 
-create_grid(WIDTH, HEIGHT)
-correct_table = [[color[::] for color in line] for line in table]
-for i in range(WIDTH*HEIGHT):
-    l = [random.randint(0,HEIGHT-1), random.randint(0,WIDTH-1)]
-    r = [random.randint(0,HEIGHT-1), random.randint(0,WIDTH-1)]
-    if l in CORNERS or r in CORNERS:
-        continue
-    swap_tiles(l, r)
-    
-correct_tiles = 0
-for i in range(HEIGHT):
-    for j in range(WIDTH):
-        if table[i][j] == correct_table[i][j]:
-            correct_tiles += 1
-        draw_tile(i, j)
+    print("HUEHUE INSTRUCTIONS:")
+    print("The 4 corners of the board are fixed,")
+    print("\tyour job is to rearrange all other tiles to complete a degradee")
+    print("\tleft-clicking a tile makes it a source tile")
+    print("\tright-clicking a tile swaps it with the last source you clicked")
+    print("\tyou can also drag&drop a tile to move it")
 
-print("HUEHUE INSTRUCTIONS:")
-print("The 4 corners of the board are fixed,")
-print("\tyour job is to rearrange all other tiles to complete a degradee")
-print("\tleft-clicking a tile makes it a source tile")
-print("\tright-clicking a tile swaps it with the last source you clicked")
-print("\tyou can also drag&drop a tile to move it")
+    left_clicked = [0, 0]
+    clock = pygame.time.Clock()
 
-pygame.image.save(screen, "start.png")
+    while correct_tiles != WIDTH*HEIGHT:
+        clock.tick(90)
 
-left_clicked = [0, 0]
+        pygame.display.update(to_update)
+        to_update = []
 
-clock = pygame.time.Clock()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            # Check if the user is dragging a tile.
+            elif ev.type == MOUSEMOTION:
+                if ev.buttons[0] == 1:
+                    to_update = draw_floating_tile_animation(
+                        screen, colours, *ev.pos, left_clicked
+                    )
+            # Check if the user (un)clicked a tile.
+            elif ev.type == MOUSEBUTTONDOWN or ev.type == MOUSEBUTTONUP:
+                if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
+                    left_clicked = pix_to_coord(*ev.pos)
+                elif ev.type == MOUSEBUTTONDOWN and ev.button == 3 or ev.type == MOUSEBUTTONUP and ev.button == 1:
+                    right_clicked = pix_to_coord(*ev.pos)
 
-while correct_tiles != WIDTH*HEIGHT:
-    clock.tick(60)
+                    if left_clicked in CORNERS or right_clicked in CORNERS:
+                        to_update = draw_surroundings(screen, colours, *right_clicked)
+                        to_update += [draw_tile(screen, colours, *left_clicked)]
+                        continue
 
-    for ev in pygame.event.get():
-        if ev.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        # Check if the user is dragging a tile.
-        elif ev.type == MOUSEMOTION:
-            if ev.buttons[0] == 1:
-                draw_floating_tile(*ev.pos, left_clicked)
-        # Check if the user (un)clicked a tile.
-        elif ev.type == MOUSEBUTTONDOWN or ev.type == MOUSEBUTTONUP:
-            if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
-                left_clicked = pix_to_coord(*ev.pos)[::-1]
-            elif ev.type == MOUSEBUTTONDOWN and ev.button == 3 or ev.type == MOUSEBUTTONUP and ev.button == 1:
-                right_clicked = pix_to_coord(*ev.pos)[::-1]
+                    # Adjust score
+                    correct_tiles += (
+                        bool(np.all(at(colours,  left_clicked) == at(correct_colours, right_clicked))) +
+                        bool(np.all(at(colours, right_clicked) == at(correct_colours,  left_clicked))) -
+                        bool(np.all(at(colours,  left_clicked) == at(correct_colours,  left_clicked))) -
+                        bool(np.all(at(colours, right_clicked) == at(correct_colours, right_clicked)))
+                    )
 
-                if left_clicked in CORNERS or right_clicked in CORNERS:
-                    draw_surroundings(*right_clicked)
-                    draw_tile(*left_clicked)
-                    continue
+                    swap_tiles(colours, left_clicked, right_clicked)
+                    to_update = draw_surroundings(screen, colours, *right_clicked)
+                    to_update += [draw_tile(screen, colours, *left_clicked)]
 
-                # moves are about to be done
-                # chech how many will decrease score
-                if table[left_clicked[0]][left_clicked[1]] == correct_table[left_clicked[0]][left_clicked[1]]:
-                    correct_tiles -= 1
-                if table[right_clicked[0]][right_clicked[1]] == correct_table[right_clicked[0]][right_clicked[1]]:
-                    correct_tiles -= 1
+                    left_clicked = right_clicked
 
-                swap_tiles(left_clicked, right_clicked)
-                draw_tile(*left_clicked)
-                draw_surroundings(*right_clicked)
+    pygame.display.set_caption("You WON!")
+    pygame.display.flip()
 
-                # moves have been done; count how many were correct moves
-                if table[left_clicked[0]][left_clicked[1]] == correct_table[left_clicked[0]][left_clicked[1]]:
-                    correct_tiles += 1
-                if table[right_clicked[0]][right_clicked[1]] == correct_table[right_clicked[0]][right_clicked[1]]:
-                    correct_tiles += 1
-
-                left_clicked = right_clicked
-
-pygame.display.set_caption("You WON!")
-pygame.image.save(screen, "end.png")
-
-while True:
-    for ev in pygame.event.get():
-        if ev.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
+    while True:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
