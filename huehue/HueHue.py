@@ -1,4 +1,5 @@
 import itertools
+import os
 import random
 import sys
 import numpy as np
@@ -15,6 +16,7 @@ except Exception:
 
 CORNERS = [[0, 0], [WIDTH-1, 0], [0, HEIGHT-1], [WIDTH-1, HEIGHT-1]]
 BLACK = np.zeros(3, dtype=np.uint8)
+FRAMES = "huehue_frames"
 
 def at(arr, pair):
     """Utility method to use pairs to index a numpy array."""
@@ -138,9 +140,18 @@ if __name__ == "__main__":
 
     left_clicked = [0, 0]
     clock = pygame.time.Clock()
+    dump_frames = False
+    frame = 0
+    ticks = 0
 
     while correct_tiles != WIDTH*HEIGHT:
         clock.tick(90)
+
+        ticks += 1
+        ticks %= 5
+        if not ticks and dump_frames:
+            frame += 1
+            pygame.image.save(screen, f"{FRAMES}/frame{frame:04}.png")
 
         pygame.display.update(to_update)
         to_update = []
@@ -149,6 +160,10 @@ if __name__ == "__main__":
             if ev.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if ev.type == KEYDOWN and ev.key == K_r:
+                dump_frames = not dump_frames
+                if not os.path.exists(FRAMES):
+                    os.makedirs(FRAMES)
             # Check if the user is dragging a tile.
             elif ev.type == MOUSEMOTION:
                 if ev.buttons[0] == 1:
