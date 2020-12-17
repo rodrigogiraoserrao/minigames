@@ -1,4 +1,6 @@
-# HueHue
+# HueHue 1.1
+
+![GIF showing how the game works](huehue_fast.gif)
 
 You can read about this game [in my blog](https://mathspp.com/blog/huehue).
 
