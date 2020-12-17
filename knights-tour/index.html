@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Knight's Tour</title>
+    <style>
+        * { padding: 0; margin: 0; text-align: center }
+        canvas { background: #eee; display: block; margin: 0 auto; }
+    </style>
+</head>
+
+<body>
+    <h1 style="padding:10px">Knight's Tour</h1>
+    <canvas id="myCanvas"></canvas>
+    <textarea id="movesTextarea" style="height:auto;"></textarea>
+    <br />
+    <p>See <a href="https://mathspp.com/blog/problems/knights-tour" target="_blank">this blog post</a>.</p>
+    <p>If you cannot play this mini game, try using a modern Firefox or Chrome browser.</p>
+
+    <script>
+        const DARK = "#191919";
+        const LIGHT = "#adb3bd";
+        const BLUE = "#3085ee";
+        const DARK_BLUE = "#3c72b2";
+        const YELLOW = "#e6d70b";
+        const SQUARE_SIZE = 80;
+        const WIDTH = 8*SQUARE_SIZE;
+
+        /* Several variables useful for the game. */
+        var visited;     // 8x8 matrix with visited positions.
+        var knightPosition; // the a1 notational position of where the knight stands.
+        var possibleMoves; // array with positions to which the knight can go next, in a1 notation.
+        var canMove;     // boolean determining whether the user can move the knight or not.
+
+        /* Convert chessboard positional notation to (x, y) coordinates.
+         * e.g. "a1" => (0, 7), "h8" => (7, 0)
+         */
+        function a1ToXY(a1) {
+            return ["abcdefgh".indexOf(a1[0]), "87654321".indexOf(a1[1])];
+        }
+
+        /* Convert (x, y) board coordinates to chessboard A1 positional notation.
+         * e.g. (0, 0) => "a8", (7, 7) => "h1"
+         */
+        function xyToA1(xy) {
+            return "abcdefgh"[xy[0]] + "87654321"[xy[1]];
+        }
+
+        /* Get the pixel position of a mouse click inside the canvas. */
+        function getCursorPosition(canvas, event) {
+            // cf. https://stackoverflow.com/a/18053642/2828287 (accessed 15-12-2020)
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            return {x: x, y: y}
+        }
+
+        /* Mouse listener that should capture user clicks and dispatches them. */
+        function mouseListener(e) {
+            if (e.buttons == 1 && e.target == canvas) {
+                if (!canMove) return;
+                const pos = getCursorPosition(canvas, e);
+                const a1 = xyToA1([
+                    Math.floor(pos.x / SQUARE_SIZE),
+                    Math.floor(pos.y / SQUARE_SIZE)
+                ])
+                if (-1 < possibleMoves.indexOf(a1)) moveKnight(a1);
+                else console.log("nope");
+            }
+        }
+
+        /* Moves the knight to the appropriate position on the chessboard. */
+        function moveKnight(a1) {
+            if (knightPosition !== undefined) {
+                // Erase previous knight and leave a shade behind.
+                drawSquare(knightPosition);
+                drawShadedKnight(knightPosition);
+                // Erase previous markers of legal moves.
+                possibleMoves.map(drawSquare);
+            }
+            knightPosition = a1;
+            const pos = a1ToXY(a1);
+            visited[pos[1]][pos[0]] = true;
+            drawKnight(a1);
+            syncPossibleMoves();
+            highlightPossibleMoves();
+
+            // Register move.
+            movesTextarea.value = (movesTextarea.value ? movesTextarea.value + ", " + knightPosition : knightPosition);
+        }
+
+        /* Draw the knight in position a1. */
+        function drawKnight(a1) {
+            _drawKnight(a1, BLUE);
+        }
+
+        /* Draw the shadow of a knight in position a1. */
+        function drawShadedKnight(a1) {
+            _drawKnight(a1, DARK_BLUE + "80"); // Also set some transparency;
+        }
+
+        /* Helper function that draws a knight with the given colour in the given position. */
+        function _drawKnight(a1, colour) {
+            const pos = a1ToXY(a1);
+            ctx.beginPath();
+            ctx.arc(
+                pos[0]*SQUARE_SIZE + SQUARE_SIZE/2,
+                pos[1]*SQUARE_SIZE + SQUARE_SIZE/2,
+                4*SQUARE_SIZE/10,
+                0, Math.PI*2, false
+            )
+            ctx.fillStyle = colour;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        /* Draws the chessboard square indicated. */
+        function drawSquare(a1) {
+            const xy = a1ToXY(a1);
+            ctx.beginPath();
+            ctx.rect(
+                xy[0]*SQUARE_SIZE, xy[1]*SQUARE_SIZE,
+                SQUARE_SIZE, SQUARE_SIZE
+            )
+            ctx.fillStyle = (xy[0]+xy[1])%2 ? LIGHT : DARK;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        /* Highlights a square. */
+        function drawHighlighting(a1) {
+            const xy = a1ToXY(a1);
+            ctx.beginPath();
+            ctx.arc(
+                xy[0]*SQUARE_SIZE + SQUARE_SIZE/2,
+                xy[1]*SQUARE_SIZE + SQUARE_SIZE/2,
+                4*SQUARE_SIZE/10,
+                0, Math.PI*2, false
+            )
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = DARK_BLUE;
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        /* Computes legal moves for the next play and sets the global variable. */
+        function syncPossibleMoves() {
+            possibleMoves = [];
+            var pos = a1ToXY(knightPosition);
+            [[1, 2], [2, 1]].forEach(function(ds) {
+                [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(function(signs) {
+                    possibleMoves.push([
+                        pos[0] + ds[0]*signs[0], pos[1] + ds[1]*signs[1]
+                    ])
+                });
+            });
+            possibleMoves = possibleMoves.filter(function(pos) {
+                return pos[0] >= 0 && pos[0] < 8 && pos[1] >= 0 && pos[1] < 8 && !visited[pos[1]][pos[0]];
+            }).map(xyToA1);
+        }
+
+        /* Highlight legal moves in the chessboard. */
+        function highlightPossibleMoves() {
+            possibleMoves.map(drawHighlighting);
+        }
+
+        /* Reset the game state. */
+        function resetGame() {
+            // Initialise the visited array to all empty positions.
+            visited = Array(8);
+            possibleMoves = [];
+            for (var y = 0; y < 8; ++y) {
+                visited[y] = Array(8);
+                for (var x = 0; x < 8; ++x) {
+                    visited[y][x] = false;
+                    const a1 = xyToA1([x, y]);
+                    drawSquare(a1);
+                    possibleMoves.push(a1);
+                }
+            }
+            knightPosition = undefined;
+            canMove = true;
+            movesTextarea.value = "";
+        }
+
+        // Initialise the canvas.
+        var canvas = document.getElementById("myCanvas");
+        canvas.setAttribute("width", 8*SQUARE_SIZE);
+        canvas.setAttribute("height", 8*SQUARE_SIZE);
+        var ctx = canvas.getContext("2d");
+        // Get the reference to the textarea that registers the moves.
+        var movesTextarea = document.getElementById("movesTextarea");
+        movesTextarea.style.width = `${8*SQUARE_SIZE-2}px`;
+
+        document.addEventListener("mousedown", mouseListener, false);
+
+        // Initialise the game.
+        resetGame();
+    </script>
+</body>
+</html>
