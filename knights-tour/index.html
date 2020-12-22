@@ -25,12 +25,14 @@
         const YELLOW = "#e6d70b";
         const SQUARE_SIZE = 80;
         const WIDTH = 8*SQUARE_SIZE;
+        const NPC_TIME = 1000;
 
         /* Several variables useful for the game. */
         var visited;     // 8x8 matrix with visited positions.
         var knightPosition; // the a1 notational position of where the knight stands.
         var possibleMoves; // array with positions to which the knight can go next, in a1 notation.
         var canMove;     // boolean determining whether the user can move the knight or not.
+        var strategy;    // array that the NPC uses to determine its moves.
 
         /* Convert chessboard positional notation to (x, y) coordinates.
          * e.g. "a1" => (0, 7), "h8" => (7, 0)
@@ -69,8 +71,73 @@
             }
         }
 
+        function moveNPC() {
+            cleanupKnightPosition();
+
+            var move;
+            const currXY = a1ToXY(knightPosition);
+            const rect = strategy[currXY[1]][currXY[0]];
+            // Try to use the strategy to pick a move.
+            possibleMoves.forEach(function (a1) {
+                var xy = a1ToXY(a1);
+                if (rect === strategy[xy[1]][xy[0]]) {
+                    move = a1;
+                }
+            });
+            if (undefined === move) {
+                move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)]
+            }
+
+            knightPosition = move;
+            const pos = a1ToXY(move);
+            visited[pos[1]][pos[0]] = true;
+            drawKnight(move);
+            registerNPCMove(move);
+            syncPossibleMoves();
+            canMove = true;
+        }
+
         /* Moves the knight to the appropriate position on the chessboard. */
-        function moveKnight(a1) {
+        async function moveKnight(a1) {
+            // Check if there is cleanup that needs to be done.
+            cleanupKnightPosition();
+            // Update the knight position and visual representation.
+            knightPosition = a1;
+            const pos = a1ToXY(a1);
+            visited[pos[1]][pos[0]] = true;
+            drawKnight(a1);
+            registerUserMove(knightPosition);
+            syncPossibleMoves();
+
+            canMove = false;
+            if (0 === possibleMoves.length) {
+                alert("You have won.");
+                return;
+            }
+
+            // cf. https://stackoverflow.com/a/39914235/2828287, visited on 18-12-2020
+            await new Promise(r => setTimeout(r, NPC_TIME)); // sleep for a bit.
+            moveNPC();
+
+            if (0 === possibleMoves.length) {
+                alert("You have lost.");
+                return;
+            }
+            highlightPossibleMoves();
+        }
+
+        /* Function to register the user move. */
+        function registerUserMove(a1) {
+            movesTextarea.value = (movesTextarea.value ? movesTextarea.value + ", " + a1 : a1);
+        }
+
+        /* Function to register the NPC move. */
+        function registerNPCMove(a1) {
+            registerUserMove(a1);
+        }
+
+        /* Cleanup current knight position. */
+        function cleanupKnightPosition() {
             if (knightPosition !== undefined) {
                 // Erase previous knight and leave a shade behind.
                 drawSquare(knightPosition);
@@ -78,15 +145,6 @@
                 // Erase previous markers of legal moves.
                 possibleMoves.map(drawSquare);
             }
-            knightPosition = a1;
-            const pos = a1ToXY(a1);
-            visited[pos[1]][pos[0]] = true;
-            drawKnight(a1);
-            syncPossibleMoves();
-            highlightPossibleMoves();
-
-            // Register move.
-            movesTextarea.value = (movesTextarea.value ? movesTextarea.value + ", " + knightPosition : knightPosition);
         }
 
         /* Draw the knight in position a1. */
@@ -164,6 +222,17 @@
             possibleMoves.map(drawHighlighting);
         }
 
+        /* Update the global variable that holds the NPC strategy. */
+        function generateNPCStrategy() {
+            strategy = new Array(8);
+            for (var y = 0; y < 8; ++y) {
+                strategy[y] = new Array(8);
+                for (var x = 0; x < 8; ++x) {
+                    strategy[y][x] = Math.floor(y/4) + 2*Math.floor(x/2);
+                }
+            }
+        }
+
         /* Reset the game state. */
         function resetGame() {
             // Initialise the visited array to all empty positions.
@@ -181,6 +250,7 @@
             knightPosition = undefined;
             canMove = true;
             movesTextarea.value = "";
+            generateNPCStrategy();
         }
 
         // Initialise the canvas.
