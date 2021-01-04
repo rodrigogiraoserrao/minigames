@@ -10,12 +10,24 @@
 </head>
 
 <body>
-    <h1 style="padding:10px">Knight's Tour</h1>
-    <canvas id="myCanvas"></canvas>
-    <textarea id="movesTextarea" style="height:auto;"></textarea>
-    <br />
-    <p>See <a href="https://mathspp.com/blog/problems/knights-tour" target="_blank">this blog post</a>.</p>
-    <p>If you cannot play this mini game, try using a modern Firefox or Chrome browser.</p>
+    <div id="gameContainer" style="margin:0 auto;">
+        <h1 style="padding:10px">Knight's Tour</h1>
+        <p>Players take turns moving a chess knight in the board, avoiding positions that have already been visited.</p>
+        <p>First player to not have a free square to move to loses.</p>
+        <br />
+        <p id="alertsParagraph"> </p>
+        <br />
+        <canvas id="myCanvas"></canvas>
+        <textarea id="movesTextarea" style="height:auto;resize:none;"></textarea>
+        <br />
+        <input type="checkbox" id="computerGoesFirstCheckbox" name="computerGoesFirstCheckbox" style="float:left;">
+        <label for="computerGoesFirstCheckbox" style="float:left;margin-left:2px">Computer goes first.</label>
+        <button onclick="resetGame()" style="float:right;">Restart Game</button>
+        <br />
+        <br />
+        <p>See <a href="https://mathspp.com/blog/problems/knights-tour" target="_blank">this blog post</a>.</p>
+        <p>If you cannot play this mini game, try using a modern Firefox or Chrome browser.</p>
+    </div>
 
     <script>
         const DARK = "#191919";
@@ -27,7 +39,36 @@
         const WIDTH = 8*SQUARE_SIZE;
         const NPC_TIME = 1000;
 
+        language = "en";
+        const strings = {
+            "you_lost": {
+                "en": "You lost!",
+                "pt": "Perdeste!"
+            },
+            "you_won": {
+                "en": "You won!",
+                "pt": "Ganhaste!"
+            },
+            "your_turn": {
+                "en": "Your turn.",
+                "pt": "É a tua vez."
+            },
+            "your_initial_turn": {
+                "en": "It is your turn. Pick <i>any</i> square.",
+                "pt": "É a tua vez. Escolhe um quadrado <i>qualquer</i>."
+            },
+            "commputers_turn": {
+                "en": "The computer is thinking...",
+                "pt": "O computador está a pensar..."
+            },
+            "pick_valid_move": {
+                "en": "Pick any <i>valid</i> move (any of the circumferences).",
+                "pt": "Por favor escolhe uma jogada <i>válida</i> (qualquer uma das circunferências)."
+            }
+        };
+
         /* Several variables useful for the game. */
+        var playerStarts = true; // flag if the user is the first player or not.
         var visited;     // 8x8 matrix with visited positions.
         var knightPosition; // the a1 notational position of where the knight stands.
         var possibleMoves; // array with positions to which the knight can go next, in a1 notation.
@@ -67,7 +108,7 @@
                     Math.floor(pos.y / SQUARE_SIZE)
                 ])
                 if (-1 < possibleMoves.indexOf(a1)) moveKnight(a1);
-                else console.log("nope");
+                else alertsParagraph.innerHTML = strings["pick_valid_move"][language];
             }
         }
 
@@ -75,19 +116,22 @@
             cleanupKnightPosition();
 
             var move;
-            const currXY = a1ToXY(knightPosition);
-            const rect = strategy[currXY[1]][currXY[0]];
-            // Try to use the strategy to pick a move.
-            possibleMoves.forEach(function (a1) {
-                var xy = a1ToXY(a1);
-                if (rect === strategy[xy[1]][xy[0]]) {
-                    move = a1;
-                }
-            });
+            if (knightPosition !== undefined) {
+                const currXY = a1ToXY(knightPosition);
+                const rect = strategy[currXY[1]][currXY[0]];
+                // Try to use the strategy to pick a move.
+                possibleMoves.forEach(function (a1) {
+                    var xy = a1ToXY(a1);
+                    if (rect === strategy[xy[1]][xy[0]]) {
+                        move = a1;
+                    }
+                });
+            }
             if (undefined === move) {
                 move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)]
             }
 
+            console.log(move);
             knightPosition = move;
             const pos = a1ToXY(move);
             visited[pos[1]][pos[0]] = true;
@@ -95,6 +139,8 @@
             registerNPCMove(move);
             syncPossibleMoves();
             canMove = true;
+            alertsParagraph.innerHTML = strings["your_turn"][language];
+            highlightPossibleMoves();
         }
 
         /* Moves the knight to the appropriate position on the chessboard. */
@@ -111,23 +157,24 @@
 
             canMove = false;
             if (0 === possibleMoves.length) {
-                alert("You have won.");
+                alertsParagraph.innerHTML = strings["you_won"][language];
                 return;
             }
 
             // cf. https://stackoverflow.com/a/39914235/2828287, visited on 18-12-2020
+            alertsParagraph.innerHTML = strings["commputers_turn"][language];
             await new Promise(r => setTimeout(r, NPC_TIME)); // sleep for a bit.
             moveNPC();
 
             if (0 === possibleMoves.length) {
-                alert("You have lost.");
+                alertsParagraph.innerHTML = strings["you_lost"][language];
                 return;
             }
-            highlightPossibleMoves();
         }
 
         /* Function to register the user move. */
         function registerUserMove(a1) {
+            console.log(a1);
             movesTextarea.value = (movesTextarea.value ? movesTextarea.value + ", " + a1 : a1);
         }
 
@@ -203,6 +250,12 @@
 
         /* Computes legal moves for the next play and sets the global variable. */
         function syncPossibleMoves() {
+            if (knightPosition === undefined) {
+                const f = (a, b) => [].concat(...a.map(d => b.map(e => [].concat(d, e))));
+                // Apply the cartesian product and then build a string out of the pairs.
+                possibleMoves = f([..."abcdefgh"], [..."12345678"]).map(pair => pair[0]+pair[1]);
+                return;
+            }
             possibleMoves = [];
             var pos = a1ToXY(knightPosition);
             [[1, 2], [2, 1]].forEach(function(ds) {
@@ -215,6 +268,7 @@
             possibleMoves = possibleMoves.filter(function(pos) {
                 return pos[0] >= 0 && pos[0] < 8 && pos[1] >= 0 && pos[1] < 8 && !visited[pos[1]][pos[0]];
             }).map(xyToA1);
+            console.log(possibleMoves);
         }
 
         /* Highlight legal moves in the chessboard. */
@@ -248,11 +302,18 @@
                 }
             }
             knightPosition = undefined;
-            canMove = true;
+            syncPossibleMoves();
+            canMove = playerStarts;
             movesTextarea.value = "";
             generateNPCStrategy();
+            if (!playerStarts) {
+                moveNPC();
+            } else {
+                alertsParagraph.innerHTML = "Your turn! Pick <i>any</i> square.";
+            }
         }
 
+        document.getElementById("gameContainer").style.width = `${8*SQUARE_SIZE}px`;
         // Initialise the canvas.
         var canvas = document.getElementById("myCanvas");
         canvas.setAttribute("width", 8*SQUARE_SIZE);
@@ -261,8 +322,14 @@
         // Get the reference to the textarea that registers the moves.
         var movesTextarea = document.getElementById("movesTextarea");
         movesTextarea.style.width = `${8*SQUARE_SIZE-2}px`;
+        // Get the reference to the paragraph that displays information.
+        var alertsParagraph = document.getElementById("alertsParagraph");
 
         document.addEventListener("mousedown", mouseListener, false);
+
+        document.getElementById("computerGoesFirstCheckbox").addEventListener("change", () => {
+            playerStarts = !playerStarts;
+        })
 
         // Initialise the game.
         resetGame();
