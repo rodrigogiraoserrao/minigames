@@ -344,7 +344,7 @@ var movesTextarea = document.getElementById("movesTextarea");
 movesTextarea.style.width = `${8*SQUARE_SIZE-2}px`;
 // Get the reference to the paragraph that displays information.
 var alertsParagraph = document.getElementById("alertsParagraph");
-var language = alertsParagraph.getAttribute("language") ? alertsParagraph.getAttribute("language") : "en";
+var language = alertsParagraph.getAttribute("language");
 
 document.addEventListener("mousedown", mouseListener, false);
 
