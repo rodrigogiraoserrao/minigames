@@ -276,15 +276,68 @@
             possibleMoves.map(drawHighlighting);
         }
 
-        /* Update the global variable that holds the NPC strategy. */
+        /* Update the global variable that holds the NPC strategy.
+         * A strategy is an 8x8 array with integers 0-7.
+         * Each cell in the array contains an id that identifies the 2x4 or 4x2 rectangle
+         * that that cell belongs to.
+         * Such a rectangle is to be taken as the area within which the knight should remain
+         * when the NPC plays the perfect strategy to win.
+         * To find a strategy, try to randomly generate the rectangles in horizontal or vertical
+         * position, according to the edges of the board and nearby rectangles that have
+         * already been assigned.
+         * Sometimes, an impossible configuration is reached (because the checks for directions
+         * do not look ahead to see if we are creating 2x2 areas where no rectangle fits)
+         * and when that happens we start over. */
         function generateNPCStrategy() {
-            strategy = new Array(8);
-            for (var y = 0; y < 8; ++y) {
-                strategy[y] = new Array(8);
-                for (var x = 0; x < 8; ++x) {
-                    strategy[y][x] = Math.floor(y/4) + 2*Math.floor(x/2);
+            var y = 0, x = 0, rec = 0;
+            var dir; // `true` represents horizontal and `false` vertical.
+            var maxdy, maxdx;
+            var placing = true;
+
+            // Brute-force-y approach to generate a valid strategy.
+            while (placing) {
+                console.log("attempt");
+                // Reset strategy array and rectangle counter.
+                strategy = new Array(8);
+                for (y = 0; y < 8; ++y) {
+                    strategy[y] = new Array(8);
                 }
+                x = y = rec = 0;
+
+                while (rec < 8) {
+                    // Find next upper-left corner of a strategy rectangle.
+                    while (y < 8 && strategy[y][x] !== undefined) {
+                        while (x < 8 && strategy[y][x] !== undefined) {
+                            x += 2;
+                        }
+                        if (x >= 8) {
+                            x = 0;
+                            y += 2;
+                        }
+                    }
+
+                    // Check if it looks like the rectangle can go in both directions or not.
+                    if (y + 2 < 8 && strategy[y + 2][x] === undefined && x + 2 < 8 && strategy[y][x + 2] === undefined) {
+                        dir = Math.random() < 0.5;
+                    } else {
+                        dir = x + 2 < 8 && strategy[y][x + 2] === undefined;
+                    }
+                    maxdx = dir ? 4 : 2;
+                    maxdy = dir ? 2 : 4;
+                    if (y + maxdy > 8 || x + maxdx > 8 || strategy[y + maxdy - 1][x + maxdx - 1] !== undefined) {
+                        break
+                    }
+
+                    for (var dy = 0; dy < maxdy; ++dy) {
+                        for (var dx = 0; dx < maxdx; ++dx) {
+                            strategy[y+dy][x+dx] = rec;
+                        }
+                    }
+                    ++rec;
+                }
+                placing = rec < 8;
             }
+
         }
 
         /* Reset the game state. */
@@ -329,6 +382,10 @@
 
         document.getElementById("computerGoesFirstCheckbox").addEventListener("change", () => {
             playerStarts = !playerStarts;
+            // Force a game reset (and a NPC move) if the player hasn't made the first move yet.
+            if (knightPosition === undefined) {
+                resetGame();
+            }
         })
 
         // Initialise the game.
